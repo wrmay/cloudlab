@@ -1,0 +1,4 @@
+---
+  instance_count: 4
+  instance_type: m4.large
+  key_pair_name: randy-may-cloud-lab

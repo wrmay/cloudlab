@@ -1,0 +1,136 @@
+---
+  AWSTemplateFormatVersion: 2010-09-09
+  Description: "Single Public Subnet"
+  Mappings:
+
+    # RegionInfo contains the ami-id of the Amazon Linux 2 AMI in each region
+    RegionInfo:
+      ap-northeast-1:
+        amazonlinux2ami: ami-0930347fabaa9cd9c
+      ap-northeast-2:
+        amazonlinux2ami: ami-0e1a0346bf9f3b831
+      ap-northeast-3:
+        amazonlinux2ami: ami-09b2bced4c085a04a
+      ap-south-1:
+        amazonlinux2ami: ami-0295b1ab1c6e6f31c
+      ap-southeast-1:
+        amazonlinux2ami: ami-0ba62a20f78ef85c8
+      ap-southeast-2:
+        amazonlinux2ami: ami-065d66d47fcd4dfc2
+      ca-central-1:
+        amazonlinux2ami: ami-0e8e4723a6ac8bb0f
+      cn-north-1:
+        amazonlinux2ami: ami-0a1ab0955075cd354
+      cn-northwest-1:
+        amazonlinux2ami: ami-0ab53e43fa638914b
+      eu-central-1:
+        amazonlinux2ami: ami-08782e1cd8f682ceb
+      eu-north-1:
+        amazonlinux2ami: ami-6462eb1a
+      eu-west-1:
+        amazonlinux2ami: ami-06a376457af6d8e1c
+      eu-west-2:
+        amazonlinux2ami: ami-0dbd5595b1b1bdab4
+      eu-west-3:
+        amazonlinux2ami: ami-080530ec9712e5948
+      sa-east-1:
+        amazonlinux2ami: ami-0a7a2e3acb791c6dc
+      us-east-1:
+        amazonlinux2ami: ami-02013ed1a71752ea7
+      us-east-2:
+        amazonlinux2ami: ami-0ee8324901ba9164d
+      us-gov-east-1:
+        amazonlinux2ami: ami-7e15f30f
+      us-gov-west-1:
+        amazonlinux2ami: ami-8b1e74ea
+      us-west-1:
+        amazonlinux2ami: ami-0f9d113ee458b4f6e
+
+  Resources:
+    VPC:
+      Type: AWS::EC2::VPC
+      Properties:
+        CidrBlock: 10.0.0.0/16
+        EnableDnsSupport: true
+        EnableDnsHostnames: true
+        InstanceTenancy: default
+
+    InternetGateway:
+      Type: AWS::EC2::InternetGateway
+
+    GatewayAttachement:
+      Type: AWS::EC2::VPCGatewayAttachment
+      Properties:
+        VpcId: !Ref VPC
+        InternetGatewayId: !Ref InternetGateway
+
+    PublicSubnet:
+      Type: AWS::EC2::Subnet
+      Properties:
+        CidrBlock: 10.0.0.0/24
+        AvailabilityZone: us-east-1a
+        VpcId: !Ref VPC
+
+    MainRouteTable:
+      Type: AWS::EC2::RouteTable
+      Properties:
+        VpcId: !Ref VPC
+
+    NonLocalRoute:
+      Type: AWS::EC2::Route
+      Properties:
+        DestinationCidrBlock: 0.0.0.0/0
+        RouteTableId: !Ref MainRouteTable
+        GatewayId: !Ref InternetGateway
+      DependsOn: InternetGateway
+
+    PublicSubnetRouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref MainRouteTable
+        SubnetId: !Ref PublicSubnet
+
+    MainSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: Allow SSH
+        VpcId: !Ref VPC
+
+    IngressRule1:
+      Type: AWS::EC2::SecurityGroupIngress
+      Properties:
+        GroupId: !Ref MainSecurityGroup
+        IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+
+    EgressRule1:
+      Type: AWS::EC2::SecurityGroupEgress
+      Properties:
+        GroupId: !Ref MainSecurityGroup
+        IpProtocol: -1
+        CidrIp: 0.0.0.0/0
+{% for instance_num in range(1,instance_count + 1) %}
+    Instance{{ instance_num }}:
+      Type: AWS::EC2::Instance
+      Properties:
+        DisableApiTermination: false
+        InstanceInitiatedShutdownBehavior: stop
+        ImageId: !FindInMap
+          - RegionInfo
+          - us-east-1
+          - amazonlinux2ami
+        InstanceType: {{ instance_type }}
+        KeyName: {{ key_pair_name }}
+        Monitoring: false
+        NetworkInterfaces:
+          - DeleteOnTermination: true
+            Description: primary network interface
+            DeviceIndex: 0
+            SubnetId: !Ref PublicSubnet
+            PrivateIpAddress: 10.0.0.{{ 100 + instance_num }}
+            GroupSet:
+              - !Ref MainSecurityGroup
+            AssociatePublicIpAddress: true
+{% endfor %}

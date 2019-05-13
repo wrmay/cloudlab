@@ -3,3 +3,4 @@ venv/
 dist/
 cloudlab.egg-info/
 __pycache__/
+.idea/

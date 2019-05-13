@@ -1,6 +1,6 @@
 ---
   AWSTemplateFormatVersion: 2010-09-09
-  Description: "Single Public Subnet"
+  Description: "CloudLab {{ key_pair_name }}"
   Mappings:
 
     # RegionInfo contains the ami-id of the Amazon Linux 2 AMI in each region
@@ -58,7 +58,7 @@
     InternetGateway:
       Type: AWS::EC2::InternetGateway
 
-    GatewayAttachement:
+    GatewayAttachment:
       Type: AWS::EC2::VPCGatewayAttachment
       Properties:
         VpcId: !Ref VPC
@@ -68,7 +68,7 @@
       Type: AWS::EC2::Subnet
       Properties:
         CidrBlock: 10.0.0.0/24
-        AvailabilityZone: us-east-1a
+        AvailabilityZone: {{ region }}a
         VpcId: !Ref VPC
 
     MainRouteTable:
@@ -119,7 +119,7 @@
         InstanceInitiatedShutdownBehavior: stop
         ImageId: !FindInMap
           - RegionInfo
-          - us-east-1
+          - {{ region }}
           - amazonlinux2ami
         InstanceType: {{ instance_type }}
         KeyName: {{ key_pair_name }}

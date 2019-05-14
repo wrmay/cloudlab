@@ -137,6 +137,14 @@ def mkenv(envdir):
                 if event['ResourceType'] == 'AWS::CloudFormation::Stack' and event['ResourceStatus'] != 'CREATE_IN_PROGRESS':
                     done = True
 
+    result = runaws('aws cloudformation describe-stacks --stack-name={}'.format(envname))
+    status = result['Stacks'][0]['StackStatus']
+    if status != 'CREATE_COMPLETE':
+        sys.exit('There was a failure while creating the CloudFormation stack.')
+    else:
+        logging.info('Cloud formation stack created.')
+
+
 
 
 # automatically appends --region= --output=json

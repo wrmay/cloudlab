@@ -114,7 +114,7 @@ def mkenv(envdir):
 
     # deploy to AWS using Cloud Formation
     runaws('aws cloudformation create-stack --stack-name={} --template-body=file://{}'
-           .format(envname,os.path.join(envdir,'aws-cloud-template.yaml')))
+           .format(envname, os.path.join(envdir, 'aws-cloud-template.yaml')))
 
     logging.info('Cloud Formation stack created.  Waiting for provisioning to complete.')
 
@@ -130,7 +130,7 @@ def mkenv(envdir):
             else:
                 if not event['ResourceStatus'].endswith('IN_PROGRESS'):
                     logging.info('Provisioning event: %s %s',
-                        event['LogicalResourceId']  if event['ResourceType'] != 'AWS::CloudFormation::Stack' else 'CloudLab {}'.format(envname),
+                        event['LogicalResourceId'] if event['ResourceType'] != 'AWS::CloudFormation::Stack' else 'CloudLab {}'.format(envname),
                         event['ResourceStatus'])
 
                 previously_seen[event['EventId']] = event
@@ -144,7 +144,24 @@ def mkenv(envdir):
     else:
         logging.info('Cloud formation stack created.')
 
+    # now use the outputs section of the describe-stacks result to write an Ansible inventory file.
+    invfile = os.path.join(envdir, 'cloudlab_{}.ini'.format(envname))
+    with open(invfile, 'w') as f:
+        for i in range(1, config['instance_count'] + 1):
+            public_ip = ''
+            private_ip = ''
+            for output in result['Stacks'][0]['Outputs']:
+                if output['OutputKey'] == 'Instance{}PublicIpAddress'.format(i):
+                    public_ip = output['OutputValue']
+                elif output['OutputKey'] == 'Instance{}PrivateIpAddress'.format(i):
+                    private_ip = output['OutputValue']
 
+                if len(public_ip) > 0 and len(private_ip) > 0:
+                    break
+
+            f.write('{}  private_ip={}\n'.format(public_ip, private_ip))
+
+    logging.info('Wrote inventory to {}'.format(invfile))
 
 
 # automatically appends --region= --output=json

@@ -3,3 +3,6 @@
   region: us-east-2
   instance_count: 3
   instance_type: m4.large
+  open_ports:
+    - 80     #there is no need to specify 22 , it is open by default
+    - 8080

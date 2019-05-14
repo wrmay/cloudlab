@@ -96,7 +96,7 @@
         GroupDescription: Allow SSH
         VpcId: !Ref VPC
 
-    IngressRule1:
+    SSHIngressRule:
       Type: AWS::EC2::SecurityGroupIngress
       Properties:
         GroupId: !Ref MainSecurityGroup
@@ -105,6 +105,17 @@
         ToPort: 22
         CidrIp: 0.0.0.0/0
 
+{% for port in open_ports %}
+    Port{{ port }}IngressRule:
+      Type: AWS::EC2::SecurityGroupIngress
+      Properties:
+        GroupId: !Ref MainSecurityGroup
+        IpProtocol: tcp
+        FromPort: {{ port }}
+        ToPort: {{ port }}
+        CidrIp: 0.0.0.0/0
+
+{% endfor %}
     EgressRule1:
       Type: AWS::EC2::SecurityGroupEgress
       Properties:

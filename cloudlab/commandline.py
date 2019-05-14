@@ -4,6 +4,7 @@ import os
 import os.path
 import pkg_resources
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -109,6 +110,8 @@ def mkenv(envdir):
     keyfile_name = os.path.join(envdir, envname + '.pem')
     with open(keyfile_name, 'w') as f:
         f.write(result['KeyMaterial'])
+
+    os.chmod(keyfile_name, stat.S_IRUSR | stat.S_IWUSR)
 
     logging.info('Created a new key pair and saved the private key to {}.'.format(keyfile_name))
 

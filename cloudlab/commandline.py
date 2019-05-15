@@ -1,3 +1,4 @@
+import collections
 import json
 import logging
 import os
@@ -121,7 +122,7 @@ def mkenv(envdir):
 
     logging.info('Cloud Formation stack created.  Waiting for provisioning to complete.')
 
-    # now we will use aws cloudformation describe-stack-events to follow the progress
+    # use aws cloudformation describe-stack-events to follow the progress
     done = False
     previously_seen = dict()
     while not done:
@@ -147,22 +148,49 @@ def mkenv(envdir):
     else:
         logging.info('Cloud formation stack created.')
 
-    # now use the outputs section of the describe-stacks result to write an Ansible inventory file.
+    # we need a map of role to list of public ip addresses but we don't have it yet
+    # make role_to_server_num:  a map of role to list of server_num
+    # make server_num_to_public_ip: a map of server number to public ip address
+    # then use the combination of the two to make the desired map
+    role_to_server_num = collections.defaultdict(list)
+    server_num_to_public_ip = dict()
+    role_to_public_ip = collections.defaultdict(list)
+
+    # build role_to_server_num
+    for server_type in config['servers']:
+        for server_num in server_type['private_ip_addresses']:
+            for role in server_type['roles']:
+                role_to_server_num[role].append(server_num)
+
+    # use the outputs section of the describe-stacks result to write an Ansible inventory file.
     invfile = os.path.join(envdir, 'cloudlab_{}.ini'.format(envname))
     with open(invfile, 'w') as f:
-        for i in range(1, config['instance_count'] + 1):
-            public_ip = ''
-            private_ip = ''
-            for output in result['Stacks'][0]['Outputs']:
-                if output['OutputKey'] == 'Instance{}PublicIpAddress'.format(i):
-                    public_ip = output['OutputValue']
-                elif output['OutputKey'] == 'Instance{}PrivateIpAddress'.format(i):
-                    private_ip = output['OutputValue']
+        for server_type in config['servers']:
+            for server_num in server_type['private_ip_addresses']:
+                public_ip = ''
+                private_ip = ''
+                for output in result['Stacks'][0]['Outputs']:
+                    if output['OutputKey'] == 'Instance{}PublicIpAddress'.format(server_num):
+                        public_ip = output['OutputValue']
+                    elif output['OutputKey'] == 'Instance{}PrivateIpAddress'.format(server_num):
+                        private_ip = output['OutputValue']
 
-                if len(public_ip) > 0 and len(private_ip) > 0:
-                    break
+                    if len(public_ip) > 0 and len(private_ip) > 0:
+                        break
 
-            f.write('{}  private_ip={}\n'.format(public_ip, private_ip))
+                server_num_to_public_ip[server_num] = public_ip
+                f.write('{}  private_ip={}\n'.format(public_ip, private_ip))
+
+        # now, before closing the file, create the role_to_public_ip map and write out a section for each role
+        for role, server_nums in role_to_server_num.items():
+            for server_num in server_nums:
+                role_to_public_ip[role].append(server_num_to_public_ip[server_num])
+
+        for role in role_to_public_ip:
+            f.write('\n')
+            f.write('[{}]\n'.format(role))
+            for public_ip in role_to_public_ip[role]:
+                f.write('{}\n'.format(public_ip))
 
     logging.info('Wrote inventory to {}'.format(invfile))
 

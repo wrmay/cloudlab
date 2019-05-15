@@ -5,22 +5,23 @@ configurability and ease of use.
 
 Cloudlab provisions a single /24 subnet in its own VPC on AWS and supports deploying up to 154 hosts into that subnet.
 
-The number of hosts, the region, and instance type can be specified.   Only EBS instance types are supported. All 
-instances (hosts) will have an Amazon assigned public IP address and DNS name.  Each host will also have private ip 
-addresses which will be assigned sequentially starting with 10.0.0.101 and proceeding through 10.0.0.254.  Knowing the 
-IP addresses before provisioning makes it easier to construct clusters.  
+Notes:
+- Only EBS instance types are supported
+- All instances (hosts) will have an Amazon assigned public IP address and DNS name.
+- Private ip addresses must be in the range 10.0.0.101 - 10.0.0.254  
+- All hosts will run Amazon Linux 2, which is a yum based distribution derived from Ubuntu.
+- All hosts can initiate connections to any server either in or outside of the private network
+- All hosts accept inbound connections on port 22
+- Other than port 22, hosts will only accept inbound connections on specific ports which can be configured per host
+- Each environment provisioned with cloudlab will have its own ssh key which will be shared by all the hosts.
 
-Hosts will have the ability to connect to each other on any port using their private IP addresses. All hosts can also 
-create outbound connections to the internet.  Inbound connections are limited to a list of ports which can be specified 
-at the time of provisioning.  Hosts will allow inbound connections from outside the private network only on a limited 
-list of ports that can be defined.  All hosts allow inbound connections from anywhere on port 22.
-
-Each environment provisioned with cloudlab will have its own ssh key which will be shared by all the hosts.
-
-All hosts will run Amazon Linux 2, which is a yum based distribution derived from Ubuntu.
 
 Hosts can be accessed via ssh using the provided key and "ec2-user"
 (e.g.  `ssh -i my-lab-key.pem ec2-user@123.45.67.89`).
+
+
+After provisioning is complete, Cloudlab will write an Ansible inventory file which can be used for further provisioning.
+Cloudlab supports the idea of roles, which will be propagated to the Ansible inventory file.
 
 # Setup
 
@@ -72,13 +73,32 @@ would like to provision.  An example is given below.
 ```yaml
 
 ---
-  region: us-east-2
-  instance_count: 3
-  instance_type: m4.large
-  open_ports:
-    - 80     #there is no need to specify 22 , it is open by default
-    - 8080
-
+  region: us-east-1
+  servers:
+    - instance_type: m5.xlarge
+      private_ip_addresses: [101,102,103] # 3 servers like this - private IPs will be 10.0.0.101,102,103
+      roles:
+        - ClusterMember
+    - instance_type: m5.xlarge
+      private_ip_addresses: [111]         # 1 server like this - private IP will be 10.0.0.111
+      roles:
+        - ManCenter                       # Servers may have one or more roles
+        - RawTransactionSource            # Roles must be alphanumeric - no underscores or hyphens 
+        - ReportRunner
+    - instance_type: m5.xlarge
+      private_ip_addresses: [112]  
+      roles:
+        - TransactionClient
+  open_ports:                             # Open ports are specified by role
+    ClusterMember:
+      - 5701
+      - 5702
+      - 5703
+    ManCenter:
+      - 8080
+    RawTransactionSource: []              # configure no open ports like this
+    ReportRunner: []                      # all servers will still listen on port 22 for SSH connections
+    TransactionClient: []
 ```
 
 Create an environment ...

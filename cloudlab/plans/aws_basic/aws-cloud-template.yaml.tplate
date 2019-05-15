@@ -68,7 +68,6 @@
       Type: AWS::EC2::Subnet
       Properties:
         CidrBlock: 10.0.0.0/24
-        AvailabilityZone: {{ region }}a
         VpcId: !Ref VPC
 
     MainRouteTable:
@@ -90,40 +89,54 @@
         RouteTableId: !Ref MainRouteTable
         SubnetId: !Ref PublicSubnet
 
-    MainSecurityGroup:
+    BaseSecurityGroup:
       Type: AWS::EC2::SecurityGroup
       Properties:
         GroupDescription: Allow SSH
         VpcId: !Ref VPC
 
+{% for role in open_ports %}
+    {{ role }}SecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: {{ role }}
+        VpcId: !Ref VPC
+
+{% endfor %}
+
     SSHIngressRule:
       Type: AWS::EC2::SecurityGroupIngress
       Properties:
-        GroupId: !Ref MainSecurityGroup
+        GroupId: !Ref BaseSecurityGroup
         IpProtocol: tcp
         FromPort: 22
         ToPort: 22
         CidrIp: 0.0.0.0/0
 
-{% for port in open_ports %}
+    AllEgressRule:
+      Type: AWS::EC2::SecurityGroupEgress
+      Properties:
+        GroupId: !Ref BaseSecurityGroup
+        IpProtocol: -1
+        CidrIp: 0.0.0.0/0
+
+{% for role in open_ports %}
+    {% for port in open_ports[role] %}
     Port{{ port }}IngressRule:
       Type: AWS::EC2::SecurityGroupIngress
       Properties:
-        GroupId: !Ref MainSecurityGroup
+        GroupId: !Ref {{ role }}SecurityGroup
         IpProtocol: tcp
         FromPort: {{ port }}
         ToPort: {{ port }}
         CidrIp: 0.0.0.0/0
 
+    {% endfor %}
 {% endfor %}
-    EgressRule1:
-      Type: AWS::EC2::SecurityGroupEgress
-      Properties:
-        GroupId: !Ref MainSecurityGroup
-        IpProtocol: -1
-        CidrIp: 0.0.0.0/0
-{% for instance_num in range(1,instance_count + 1) %}
-    Instance{{ instance_num }}:
+
+{% for server_group in servers %}
+    {% for private_ip_address in server_group.private_ip_addresses %}
+    Instance{{ private_ip_address }}:
       Type: AWS::EC2::Instance
       Properties:
         DisableApiTermination: false
@@ -132,7 +145,7 @@
           - RegionInfo
           - {{ region }}
           - amazonlinux2ami
-        InstanceType: {{ instance_type }}
+        InstanceType: {{ server_group.instance_type }}
         KeyName: {{ key_pair_name }}
         Monitoring: false
         NetworkInterfaces:
@@ -140,22 +153,29 @@
             Description: primary network interface
             DeviceIndex: 0
             SubnetId: !Ref PublicSubnet
-            PrivateIpAddress: 10.0.0.{{ 100 + instance_num }}
+            PrivateIpAddress: 10.0.0.{{ private_ip_address }}
             GroupSet:
-              - !Ref MainSecurityGroup
+              - !Ref BaseSecurityGroup
+        {% for role in server_group.roles %}
+              - !Ref {{ role }}SecurityGroup
+        {% endfor %}
             AssociatePublicIpAddress: true
+    {% endfor %}
 {% endfor %}
 
   Outputs:
-{% for instance_num in range(1,instance_count + 1) %}
-    Instance{{ instance_num }}PublicIpAddress:
-        Description: The public ip address of instance {{ instance_num }}.
+{% for server_group in servers %}
+    {% for private_ip_address in server_group.private_ip_addresses %}
+    Instance{{ private_ip_address }}PublicIpAddress:
+        Description: The public ip address of instance {{ private_ip_address }}.
         Value: !GetAtt
-            - Instance{{ instance_num }}
+            - Instance{{ private_ip_address }}
             - PublicIp
-    Instance{{ instance_num }}PrivateIpAddress:
-        Description: The private ip address of instance {{ instance_num }}.
+    Instance{{ private_ip_address }}PrivateIpAddress:
+        Description: The private ip address of instance {{ private_ip_address }}.
         Value: !GetAtt
-            - Instance{{ instance_num }}
+            - Instance{{ private_ip_address }}
             - PrivateIp
+
+    {% endfor %}
 {% endfor %}

@@ -5,14 +5,14 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='cloudlab',
-    version='1.1.0',
+    version='1.1.1',
     author='Randy May',
     description='A tool for quickly provisioning environments on AWS for use with classes and performance labs.',
     long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/wrmay/cloudlab',
     packages=setuptools.find_packages(),
-    package_data={ '': ['plans/**/*']},
+    package_data={ '': ['plans/**/*', 'cloudlab_config.yaml']},
     entry_points = {
         'console_scripts' : ['cloudlab=cloudlab.commandline:run']
     },

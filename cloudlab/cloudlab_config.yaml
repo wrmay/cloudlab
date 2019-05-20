@@ -1,0 +1,27 @@
+---
+  region: us-east-1
+  servers:
+    - instance_type: m5.xlarge
+      private_ip_addresses: [101,102,103] # 3 servers like this - private IPs will be 10.0.0.101,102,103
+      roles:
+        - ClusterMember
+    - instance_type: m5.xlarge
+      private_ip_addresses: [111]         # 1 server like this - private IP will be 10.0.0.111
+      roles:
+        - ManCenter                       # Servers may have one or more roles
+        - RawTransactionSource            # Roles must be alphanumeric - no underscores or hyphens
+        - ReportRunner
+    - instance_type: m5.xlarge
+      private_ip_addresses: [112]
+      roles:
+        - TransactionClient
+  open_ports:                             # Open ports are specified by role
+    ClusterMember:
+      - 5701
+      - 5702
+      - 5703
+    ManCenter:
+      - 8080
+    RawTransactionSource: []              # configure no open ports like this
+    ReportRunner: []                      # all servers will still listen on port 22 for SSH connections
+    TransactionClient: []

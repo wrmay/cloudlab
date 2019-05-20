@@ -22,11 +22,9 @@ def print_help():
     print('A file named "cloudlab_config.yaml" must be present in the current directory.')
     print('See the sample below.')
     print()
-    print('---')
-    print('   region: us-east-2')
-    print('   instance_count: 3')
-    print('   instance_type: m4.medium')
 
+    sample = pkg_resources.resource_string('cloudlab', 'cloudlab_config.yaml')
+    print(sample.decode('unicode_escape'))
 
 def run():
     global config
@@ -163,7 +161,7 @@ def mkenv(envdir):
                 role_to_server_num[role].append(server_num)
 
     # use the outputs section of the describe-stacks result to write an Ansible inventory file.
-    invfile = os.path.join(envdir, 'cloudlab_{}.ini'.format(envname))
+    invfile = os.path.join(envdir, 'inventory.ini'.format(envname))
     with open(invfile, 'w') as f:
         for server_type in config['servers']:
             for server_num in server_type['private_ip_addresses']:

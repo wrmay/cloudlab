@@ -176,7 +176,7 @@ def mkenv(envdir):
                     elif output['OutputKey'] == 'Instance{}PublicDnsName'.format(server_num):
                         dns_name = output['OutputValue']
 
-                    if len(public_ip) > 0 and len(private_ip) > 0:
+                    if len(public_ip) > 0 and len(private_ip) > 0 and len(dns_name) > 0:
                         break
 
                 server_num_to_public_ip[server_num] = public_ip

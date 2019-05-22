@@ -167,17 +167,20 @@ def mkenv(envdir):
             for server_num in server_type['private_ip_addresses']:
                 public_ip = ''
                 private_ip = ''
+                dns_name = ''
                 for output in result['Stacks'][0]['Outputs']:
                     if output['OutputKey'] == 'Instance{}PublicIpAddress'.format(server_num):
                         public_ip = output['OutputValue']
                     elif output['OutputKey'] == 'Instance{}PrivateIpAddress'.format(server_num):
                         private_ip = output['OutputValue']
+                    elif output['OutputKey'] == 'Instance{}PublicDnsName'.format(server_num):
+                        dns_name = output['OutputValue']
 
                     if len(public_ip) > 0 and len(private_ip) > 0:
                         break
 
                 server_num_to_public_ip[server_num] = public_ip
-                f.write('{}  private_ip={}\n'.format(public_ip, private_ip))
+                f.write('{}  private_ip={} dns_name={}\n'.format(public_ip, private_ip, dns_name))
 
         # now, before closing the file, create the role_to_public_ip map and write out a section for each role
         for role, server_nums in role_to_server_num.items():

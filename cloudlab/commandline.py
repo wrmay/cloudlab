@@ -11,12 +11,13 @@ import sys
 import time
 import yaml
 
-COMMANDS = ['mkenv', 'rmenv', 'help']
+COMMANDS = ['mkenv', 'rmenv', 'update', 'help']
 config = None  # config is global
 
 
 def print_help():
     print('Make a new environment:               cloudlab mkenv path/envname')
+    print('Update an existing environment:       cloudlab update path/envname')
     print('Destroy an existing environment:      cloudlab rmenv path/envname ')
     print()
     print('A file named "cloudlab_config.yaml" must be present in the current directory.')
@@ -25,6 +26,7 @@ def print_help():
 
     sample = pkg_resources.resource_string('cloudlab', 'cloudlab_config.yaml')
     print(sample.decode('unicode_escape'))
+
 
 def run():
     global config
@@ -48,12 +50,14 @@ def run():
     logging.basicConfig(format='%(asctime)s:%(message)s', level=logging.DEBUG)
 
     if command == COMMANDS[0]:
-        mkenv(envdir)
-    elif command == COMMANDS[-1]:
+        mkenv(envdir, False)
+    elif command == COMMANDS[1]:
+        rmenv(envdir)
+    elif command == COMMANDS[2]:
+        mkenv(envdir, True)
+    else:
         print_help()
         sys.exit(0)
-    else:
-        rmenv(envdir)
 
 
 def rmenv(envdir):
@@ -72,7 +76,7 @@ def rmenv(envdir):
     logging.info('Removed cloudlab environment: %s.', envdir)
 
 
-def mkenv(envdir):
+def mkenv(envdir, update):
     global config
 
     # create the directory
@@ -81,8 +85,16 @@ def mkenv(envdir):
 
     envname = os.path.basename(envdir)
 
-    if os.path.exists(envdir):
-        sys.exit('Environment directory already exists. Exiting.')
+    if update:
+        if not os.path.exists(envdir):
+            sys.exit('Environment directory does not exist. Exiting.')
+        else:
+            shutil.rmtree(envdir, ignore_errors=True)
+            logging.info('Removed cloudlab environment directory: %s.', envdir)
+
+    else:
+        if os.path.exists(envdir):
+            sys.exit('Environment directory already exists. Exiting.')
 
     os.makedirs(envdir)
     logging.info('Created directory %s', envdir)
@@ -96,55 +108,91 @@ def mkenv(envdir):
 
     sourcedir = pkg_resources.resource_filename('cloudlab', 'plans/aws_basic')
 
-    result = subprocess.run(['tplate', sourcedir, envdir], check=False, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT)
+    tplate_cmd = ['tplate', sourcedir, envdir]
+    if update:
+        tplate_cmd += ['--update']
+
+    result = subprocess.run(tplate_cmd, check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
     if result.returncode != 0:
         sys.exit('Template generation failed with the following output: {}'.format(result.stdout))
 
     logging.info('Generated aws cloud formation template to %s.', envdir)
 
     # create the key pair
-    result = runaws('aws ec2 create-key-pair --key-name={}'.format(envname))
+    if not update:
+        result = runaws('aws ec2 create-key-pair --key-name={}'.format(envname))
 
-    keyfile_name = os.path.join(envdir, envname + '.pem')
-    with open(keyfile_name, 'w') as f:
-        f.write(result['KeyMaterial'])
+        keyfile_name = os.path.join(envdir, envname + '.pem')
+        with open(keyfile_name, 'w') as f:
+            f.write(result['KeyMaterial'])
 
-    os.chmod(keyfile_name, stat.S_IRUSR | stat.S_IWUSR)
+        os.chmod(keyfile_name, stat.S_IRUSR | stat.S_IWUSR)
 
-    logging.info('Created a new key pair and saved the private key to {}.'.format(keyfile_name))
+        logging.info('Created a new key pair and saved the private key to {}.'.format(keyfile_name))
 
     # deploy to AWS using Cloud Formation
-    runaws('aws cloudformation create-stack --stack-name={} --template-body=file://{}'
-           .format(envname, os.path.join(envdir, 'aws-cloud-template.yaml')))
+    nowait = False
+    if update:
+        # first we need to figure out the latest event related to this stack so we can start watching events after that
+        result = runaws('aws cloudformation describe-stack-events --stack-name={}'.format(envname))
+        last_event_timestamp = result['StackEvents'][0]['Timestamp']
 
-    logging.info('Cloud Formation stack created.  Waiting for provisioning to complete.')
+
+        result = runaws_result('aws cloudformation update-stack --stack-name={} --template-body=file://{}'
+               .format(envname, os.path.join(envdir, 'aws-cloud-template.yaml')))
+
+        if result.returncode != 0:
+            if 'No updates are to be performed'  in str(result.stdout):
+                nowait = True
+                logging.info("The Cloudformation stack is already up to date")
+            else:
+                sys.exit('An error occurred while updating the Cloudformation stack: {}'.format(result.stdout))
+
+        else:
+            logging.info('Waiting for stack update to complete.')
+    else:
+        runaws('aws cloudformation create-stack --stack-name={} --template-body=file://{}'
+               .format(envname, os.path.join(envdir, 'aws-cloud-template.yaml')))
+
+        logging.info('Cloud Formation stack created.  Waiting for provisioning to complete.')
 
     # use aws cloudformation describe-stack-events to follow the progress
-    done = False
+    done = nowait
     previously_seen = dict()
     while not done:
         time.sleep(5.0)
         result = runaws('aws cloudformation describe-stack-events --stack-name={}'.format(envname))
         for event in reversed(result['StackEvents']):
+            if event['Timestamp'] <= last_event_timestamp:
+                continue
+
             if event['EventId'] in previously_seen:
                 continue
             else:
                 if not event['ResourceStatus'].endswith('IN_PROGRESS'):
                     logging.info('Provisioning event: %s %s',
-                        event['LogicalResourceId'] if event['ResourceType'] != 'AWS::CloudFormation::Stack' else 'CloudLab {}'.format(envname),
-                        event['ResourceStatus'])
+                                 event['LogicalResourceId'] if event['ResourceType'] != 'AWS::CloudFormation::Stack' else 'CloudLab {}'.format(envname),
+                                 event['ResourceStatus'])
 
                 previously_seen[event['EventId']] = event
-                if event['ResourceType'] == 'AWS::CloudFormation::Stack' and event['ResourceStatus'] != 'CREATE_IN_PROGRESS':
+                if event['ResourceType'] == 'AWS::CloudFormation::Stack' and event['ResourceStatus'].find('COMPLETE') >= 0:
                     done = True
 
     result = runaws('aws cloudformation describe-stacks --stack-name={}'.format(envname))
     status = result['Stacks'][0]['StackStatus']
-    if status != 'CREATE_COMPLETE':
-        sys.exit('There was a failure while creating the CloudFormation stack.')
+
+    if update:
+        if not status.startswith('UPDATE_COMPLETE'):
+            sys.exit('There was a failure while updating the CloudFormation stack.')
+        else:
+            logging.info('Cloud formation stack updated.')
+
     else:
-        logging.info('Cloud formation stack created.')
+        if status != 'CREATE_COMPLETE':
+            sys.exit('There was a failure while creating the CloudFormation stack.')
+        else:
+            logging.info('Cloud formation stack created.')
 
     # we need a map of role to list of public ip addresses but we don't have it yet
     # make role_to_server_num:  a map of role to list of server_num
@@ -204,9 +252,18 @@ def runaws(commands):
     result = subprocess.run(cmdarray, check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
     if result.returncode != 0:
-        sys.exit('Exiting because an error occurred while running: {}.  The output was: {}'.format(' '.join(cmdarray),
-                                                                                                   result.stdout))
+        sys.exit(
+            'Exiting because an error occurred while running: {}.  The output was: {}'.format(' '.join(cmdarray),
+                                                                                              result.stdout))
     if len(result.stdout) > 0:
         return json.loads(result.stdout)
     else:
         return None
+
+# automatically appends --region= --output=json
+def runaws_result(commands):
+    cmdarray = commands.split()
+    cmdarray += ['--region={}'.format(config['region']), '--output=json']
+
+    return subprocess.run(cmdarray, check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+

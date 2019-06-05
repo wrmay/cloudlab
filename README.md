@@ -120,3 +120,17 @@ cloudlab rmenv envdir
 ```
 
 Will destroy a previously created environment.
+
+```
+cloudlab update envdir
+
+```
+
+Will cause the environment to be updated based on changes to "cloudlab_config.yaml"
+
+# Release Notes
+
+## v1.1.4
+
+- added the "update" command
+

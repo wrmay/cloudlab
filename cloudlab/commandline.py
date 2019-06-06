@@ -164,7 +164,7 @@ def mkenv(envdir, update):
         time.sleep(5.0)
         result = runaws('aws cloudformation describe-stack-events --stack-name={}'.format(envname))
         for event in reversed(result['StackEvents']):
-            if event['Timestamp'] <= last_event_timestamp:
+            if update and event['Timestamp'] <= last_event_timestamp:
                 continue
 
             if event['EventId'] in previously_seen:

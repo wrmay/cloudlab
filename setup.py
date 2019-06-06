@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='cloudlab',
-    version='1.1.4',
+    version='1.1.5',
     author='Randy May',
     description='A tool for quickly provisioning environments on AWS for use with classes and performance labs.',
     long_description=long_description,

@@ -88,16 +88,16 @@ def mkenv(envdir, update):
     if update:
         if not os.path.exists(envdir):
             sys.exit('Environment directory does not exist. Exiting.')
-        else:
-            shutil.rmtree(envdir, ignore_errors=True)
-            logging.info('Removed cloudlab environment directory: %s.', envdir)
+        # else:
+        #     shutil.rmtree(envdir, ignore_errors=True)
+        #     logging.info('Removed cloudlab environment directory: %s.', envdir)
 
     else:
         if os.path.exists(envdir):
             sys.exit('Environment directory already exists. Exiting.')
 
-    os.makedirs(envdir)
-    logging.info('Created directory %s', envdir)
+        os.makedirs(envdir)
+        logging.info('Created directory %s', envdir)
 
     # generate the yaml file and save it to the target environment
     config['key_pair_name'] = envname

@@ -122,7 +122,7 @@
 
 {% for role in open_ports %}
     {% for port in open_ports[role] %}
-    Port{{ port }}IngressRule:
+    {{ role }}Port{{ port }}IngressRule:
       Type: AWS::EC2::SecurityGroupIngress
       Properties:
         GroupId: !Ref {{ role }}SecurityGroup

@@ -130,11 +130,16 @@ Will cause the environment to be updated based on changes to "cloudlab_config.ya
 
 # Release Notes
 
+## v1.1.6
+
+- fix for failing "update" command
+
+## v1.1.5
+
+- fixed a bug that caused mkenv to fail
+ 
 ## v1.1.4
 
 - added the "update" command
 
-## v1.1.5
-
-- fixed a bug that caused mkenv to fail 
 

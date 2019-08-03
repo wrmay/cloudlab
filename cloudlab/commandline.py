@@ -217,12 +217,11 @@ def mkenv(envdir, update):
                 private_ip = ''
                 dns_name = ''
                 for output in result['Stacks'][0]['Outputs']:
-                    if output['OutputKey'] == 'Instance{}PublicIpAddress'.format(server_num):
-                        public_ip = output['OutputValue']
-                    elif output['OutputKey'] == 'Instance{}PrivateIpAddress'.format(server_num):
-                        private_ip = output['OutputValue']
-                    elif output['OutputKey'] == 'Instance{}PublicDnsName'.format(server_num):
-                        dns_name = output['OutputValue']
+                    if output['OutputKey'] == 'Instance{}Attributes'.format(server_num):
+                        attributes = output['OutputValue'].split('|')
+                        public_ip = attributes[0]
+                        private_ip = attributes[1]
+                        dns_name = attributes[2]
 
                     if len(public_ip) > 0 and len(private_ip) > 0 and len(dns_name) > 0:
                         break
@@ -266,4 +265,3 @@ def runaws_result(commands):
     cmdarray += ['--region={}'.format(config['region']), '--output=json']
 
     return subprocess.run(cmdarray, check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-

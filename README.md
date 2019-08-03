@@ -1,9 +1,9 @@
 # Cloudlab Overview
 
-Cloudlab allows you to quickly provision a lab environment on AWS.  It attempts to strike a good balance between 
+Cloudlab allows you to quickly provision a lab environment on AWS.  It attempts to strike a good balance between
 configurability and ease of use.
 
-Cloudlab provisions a single /24 subnet in its own VPC on AWS and supports deploying up to 154 hosts into that subnet.
+Cloudlab provisions a single /24 subnet in its own VPC on AWS and supports deploying up to 60 hosts into that subnet.
 
 Notes:
 - Only EBS instance types are supported
@@ -67,7 +67,7 @@ aws configure  # follow the prompts ...
 ```
 # Usage
 
-Create a file called "cloudlab_config.yaml" in the current directory and edit it to describe the environment(s) you 
+Create a file called "cloudlab_config.yaml" in the current directory and edit it to describe the environment(s) you
 would like to provision.  An example is given below.
 
 ```yaml
@@ -83,7 +83,7 @@ would like to provision.  An example is given below.
       private_ip_addresses: [111]         # 1 server like this - private IP will be 10.0.0.111
       roles:
         - ManCenter                       # Servers may have one or more roles
-        - RawTransactionSource            # Roles must be alphanumeric - no underscores or hyphens 
+        - RawTransactionSource            # Roles must be alphanumeric - no underscores or hyphens
         - ReportRunner
     - instance_type: m5.xlarge
       private_ip_addresses: [112]  
@@ -107,12 +107,12 @@ Create an environment ...
 cloudlab mkenv envdir
 ```
 
-"envdir" should be an absolute or relative path.  The `basename(envdir)` will be used as the name of the environment 
-and must be unique. 
+"envdir" should be an absolute or relative path.  The `basename(envdir)` will be used as the name of the environment
+and must be unique.
 
 The "envdir" directory will be created.  The process will fail if the directory already exists.
 
-An Ansible inventory file containing both the public and private ip addresses will be written into 
+An Ansible inventory file containing both the public and private ip addresses will be written into
 "envdir" to faciliate managing the environment with  Ansible playbooks
 
 ```
@@ -130,6 +130,12 @@ Will cause the environment to be updated based on changes to "cloudlab_config.ya
 
 # Release Notes
 
+## v1.1.7
+
+- Due to a limitation of 60 outputs in an AWS CloudFormation template, it was
+  not possible to provision more than 20 servers using cloudlab.  With this
+  update, the limit has been raised to 60 servers.
+
 ## v1.1.6
 
 - fix for failing "update" command
@@ -137,9 +143,7 @@ Will cause the environment to be updated based on changes to "cloudlab_config.ya
 ## v1.1.5
 
 - fixed a bug that caused mkenv to fail
- 
+
 ## v1.1.4
 
 - added the "update" command
-
-

@@ -166,23 +166,19 @@
   Outputs:
 {% for server_group in servers %}
     {% for private_ip_address in server_group.private_ip_addresses %}
-    Instance{{ private_ip_address }}PublicIpAddress:
-        Description: The public ip address of instance {{ private_ip_address }}.
-        Value: !GetAtt
-            - Instance{{ private_ip_address }}
-            - PublicIp
-
-    Instance{{ private_ip_address }}PrivateIpAddress:
-        Description: The private ip address of instance {{ private_ip_address }}.
-        Value: !GetAtt
-            - Instance{{ private_ip_address }}
-            - PrivateIp
-
-    Instance{{ private_ip_address }}PublicDnsName:
-        Description: The private DNS name of instance {{ private_ip_address }}.
-        Value: !GetAtt
-            - Instance{{ private_ip_address }}
-            - PublicDnsName
+    Instance{{ private_ip_address }}Attributes:
+        Description: The attributes of instance {{ private_ip_address }}.
+        Value: !Join
+            - '|'
+            - - !GetAtt
+                - Instance{{ private_ip_address }}
+                - PublicIp
+              - !GetAtt
+                - Instance{{ private_ip_address }}
+                - PrivateIp
+              - !GetAtt
+                - Instance{{ private_ip_address }}
+                - PublicDnsName
 
     {% endfor %}
 {% endfor %}

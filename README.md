@@ -130,6 +130,10 @@ Will cause the environment to be updated based on changes to "cloudlab_config.ya
 
 # Release Notes
 
+## v1.1.8
+
+- tplate updates broke cloudlab. The tplate version is now pinned to 1.0.3.
+
 ## v1.1.7
 
 - Due to a limitation of 60 outputs in an AWS CloudFormation template, it was

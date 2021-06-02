@@ -130,7 +130,7 @@ Will cause the environment to be updated based on changes to "cloudlab_config.ya
 
 # Release Notes
 
-## v1.1.19
+## v1.1.9
 
 - updated required verision of PyYAML to >= 5.4 to avoid known vulnerability in earlier versions.
 

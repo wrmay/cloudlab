@@ -130,6 +130,10 @@ Will cause the environment to be updated based on changes to "cloudlab_config.ya
 
 # Release Notes
 
+## v1.1.19
+
+- updated required verision of PyYAML to >= 5.4 to avoid known vulnerability in earlier versions.
+
 ## v1.1.8
 
 - tplate updates broke cloudlab. The tplate version is now pinned to 1.0.3.

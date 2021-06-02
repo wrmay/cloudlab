@@ -17,5 +17,5 @@ setuptools.setup(
         'console_scripts' : ['cloudlab=cloudlab.commandline:run']
     },
     license='MIT',
-    install_requires=['tplate==1.0.3','awscli>=1.16','setuptools>=41.0.1', 'PyYaml<=3.13']
+    install_requires=['tplate==1.0.3','awscli>=1.16','setuptools>=41.0.1', 'PyYaml>=5.4']
 )

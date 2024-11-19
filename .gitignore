@@ -1,5 +1,6 @@
 *.pem
 venv/
+.venv/
 dist/
 cloudlab.egg-info/
 __pycache__/

@@ -1,0 +1,136 @@
+---
+  AWSTemplateFormatVersion: 2010-09-09
+  Description: "CloudLab {{ config.key_pair_name }}"
+
+  Resources:
+    VPC:
+      Type: AWS::EC2::VPC
+      Properties:
+        CidrBlock: {{ config.cidr }}
+        EnableDnsSupport: true
+        EnableDnsHostnames: true
+        InstanceTenancy: default
+
+    InternetGateway:
+      Type: AWS::EC2::InternetGateway
+
+    GatewayAttachment:
+      Type: AWS::EC2::VPCGatewayAttachment
+      Properties:
+        VpcId: !Ref VPC
+        InternetGatewayId: !Ref InternetGateway
+
+    MainRouteTable:
+      Type: AWS::EC2::RouteTable
+      Properties:
+        VpcId: !Ref VPC
+
+    NonLocalRoute:
+      Type: AWS::EC2::Route
+      Properties:
+        DestinationCidrBlock: 0.0.0.0/0
+        RouteTableId: !Ref MainRouteTable
+        GatewayId: !Ref InternetGateway
+      DependsOn: InternetGateway
+
+{% for subnet in config.subnets %}
+    Subnet{{ subnet.az|upper }}:
+      Type: AWS::EC2::Subnet
+      Properties:
+        CidrBlock: {{ subnet.cidr }}
+        VpcId: !Ref VPC
+
+    Subnet{{ subnet.az|upper }}RouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref MainRouteTable
+        SubnetId: !Ref Subnet{{ subnet.az|upper }}
+{% endfor %}
+
+    BaseSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: Allow SSH
+        VpcId: !Ref VPC
+
+    SSHIngressRule:
+      Type: AWS::EC2::SecurityGroupIngress
+      Properties:
+        GroupId: !Ref BaseSecurityGroup
+        IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+
+    AllEgressRule:
+      Type: AWS::EC2::SecurityGroupEgress
+      Properties:
+        GroupId: !Ref BaseSecurityGroup
+        IpProtocol: -1
+        CidrIp: 0.0.0.0/0
+
+{% for role in config.roles %}
+    {{ role }}SecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: {{ role }}
+        VpcId: !Ref VPC
+
+    {% for port in role.open_ports %}
+    {{ role }}Port{{ port }}IngressRule:
+      Type: AWS::EC2::SecurityGroupIngress
+      Properties:
+        GroupId: !Ref {{ role }}SecurityGroup
+        IpProtocol: tcp
+        FromPort: {{ port }}
+        ToPort: {{ port }}
+        CidrIp: 0.0.0.0/0
+    {% endfor %}
+{% endfor %}
+
+{% for subnet in config.subnets %}
+    {% for group in subnet.servers %}
+        {% for private_ip_suffix in group.private_ip_suffixes %}
+    Instance{{ subnet.az|upper }}{{ private_ip_suffix }}:
+      Type: AWS::EC2::Instance
+      Properties:
+        DisableApiTermination: false
+        InstanceInitiatedShutdownBehavior: stop
+        ImageId: {{ config.roles[group.role].ami_id }}
+        InstanceType: {{ config.roles[group.role].instance_type }}
+        KeyName: {{ config.key_pair_name }}
+        Monitoring: false
+        NetworkInterfaces:
+          - DeleteOnTermination: true
+            Description: primary network interface
+            DeviceIndex: 0
+            SubnetId: !Ref Subnet{{ subnet.az|upper }}
+            PrivateIpAddress: {{ group.private_ip_addresses[loop.index0] }}
+            GroupSet:
+              - !Ref BaseSecurityGroup
+              - !Ref {{ group.role }}SecurityGroup
+            AssociatePublicIpAddress: true
+        {% endfor %}
+    {% endfor %}
+{% endfor %}
+
+  Outputs:
+{% for subnet in config.subnets %}
+    {% for group in subnet.servers %}
+        {% for private_ip in group.private_ip_suffixes %}
+    Instance{{ subnet.az|upper }}{{ private_ip }}Attributes:
+        Description: The attributes of instance {{ subnet.az|upper }}{{ private_ip }}.
+        Value: !Join
+            - '|'
+            - - !GetAtt
+                - Instance{{ subnet.az|upper }}{{ private_ip }}
+                - PublicIp
+              - !GetAtt
+                - Instance{{ subnet.az|upper }}{{ private_ip }}
+                - PrivateIp
+              - !GetAtt
+                - Instance{{ subnet.az|upper }}{{ private_ip }}
+                - PublicDnsName
+        {% endfor %}
+    {% endfor %}
+{% endfor %}

@@ -1,16 +1,19 @@
-import collections
 import json
 import logging
 import os
 import os.path
-import pkg_resources
+import re
 import shutil
 import stat
 import subprocess
 import sys
 import time
+
+import jinja2
+import pkg_resources
 import yaml
 
+CLOUDFORMATION_TEMPLATE_NAME = 'cf.yaml'
 COMMANDS = ['mkenv', 'rmenv', 'update', 'help']
 config = None  # config is global
 
@@ -79,6 +82,20 @@ def rmenv(envdir):
 def mkenv(envdir, update):
     global config
 
+    # augment the configuration by looking up ami_ids for this region
+    for role in config['roles'].values():
+        if 'ami_name' in role:
+            role['ami_id'] = get_ami_id(role['ami_name'])
+
+    # convert private_ip_suffixes to private_ip_addresses for each server
+    for subnet in config['subnets']:
+        for group in subnet['servers']:
+            private_ip_addresses = []
+            for suffix in group['private_ip_suffixes']:
+                private_ip_addresses.append( make_ip(subnet['cidr'], suffix))
+
+            group['private_ip_addresses'] = private_ip_addresses
+
     # create the directory
     if envdir.endswith('/'):
         envdir = envdir[0:-1]
@@ -101,29 +118,21 @@ def mkenv(envdir, update):
 
     # generate the yaml file and save it to the target environment
     config['key_pair_name'] = envname
-    with open(os.path.join(envdir, 'tplate.yaml'), 'w') as tplate_config_file:
-        yaml.dump(config, tplate_config_file)
 
-    logging.info('Wrote "tplate.yaml" file to %s.', envdir)
+    j2loader = jinja2.PackageLoader('cloudlab', 'plans')
+    j2env = jinja2.Environment(loader=j2loader, lstrip_blocks=True, trim_blocks=True)
+    template = j2env.get_template('aws_with_subnets.yaml.j2')
+    cf_template_file = os.path.join(envdir, CLOUDFORMATION_TEMPLATE_NAME)
+    with open(cf_template_file, 'w') as f:
+        template.stream(config=config).dump(f)
 
-    sourcedir = pkg_resources.resource_filename('cloudlab', 'plans/aws_basic')
-
-    tplate_cmd = ['tplate', sourcedir, envdir]
-    if update:
-        tplate_cmd += ['--update']
-
-    result = subprocess.run(tplate_cmd, check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-
-    if result.returncode != 0:
-        sys.exit('Template generation failed with the following output: {}'.format(result.stdout))
-
-    logging.info('Generated aws cloud formation template to %s.', envdir)
+    logging.info(f'Generated Cloud Formation Template: {cf_template_file}')
 
     # create the key pair
+    keyfile_name = os.path.join(envdir, envname + '.pem')
     if not update:
         result = runaws('aws ec2 create-key-pair --key-name={}'.format(envname))
 
-        keyfile_name = os.path.join(envdir, envname + '.pem')
         with open(keyfile_name, 'w') as f:
             f.write(result['KeyMaterial'])
 
@@ -135,25 +144,26 @@ def mkenv(envdir, update):
     nowait = False
     if update:
         # first we need to figure out the latest event related to this stack so we can start watching events after that
-        result = runaws('aws cloudformation describe-stack-events --stack-name={}'.format(envname))
+        result = runaws(f'aws cloudformation describe-stack-events --stack-name={envname}')
         last_event_timestamp = result['StackEvents'][0]['Timestamp']
 
-
-        result = runaws_result('aws cloudformation update-stack --stack-name={} --template-body=file://{}'
-               .format(envname, os.path.join(envdir, 'aws-cloud-template.yaml')))
+        result = runaws_result('aws cloudformation update-stack '
+                               f'--stack-name={envname} '
+                               f'--template-body=file://{cf_template_file}')
 
         if result.returncode != 0:
             if 'No updates are to be performed'  in str(result.stdout):
                 nowait = True
                 logging.info("The Cloudformation stack is already up to date")
             else:
-                sys.exit('An error occurred while updating the Cloudformation stack: {}'.format(result.stdout))
+                sys.exit(f'An error occurred while updating the Cloudformation stack: {result.stdout}')
 
         else:
             logging.info('Waiting for stack update to complete.')
     else:
-        runaws('aws cloudformation create-stack --stack-name={} --template-body=file://{}'
-               .format(envname, os.path.join(envdir, 'aws-cloud-template.yaml')))
+        runaws('aws cloudformation create-stack '
+               f'--stack-name={envname} '
+               f'--template-body=file://{cf_template_file}')
 
         logging.info('Cloud Formation stack created.  Waiting for provisioning to complete.')
 
@@ -162,7 +172,7 @@ def mkenv(envdir, update):
     previously_seen = dict()
     while not done:
         time.sleep(5.0)
-        result = runaws('aws cloudformation describe-stack-events --stack-name={}'.format(envname))
+        result = runaws(f'aws cloudformation describe-stack-events --stack-name={envname}')
         for event in reversed(result['StackEvents']):
             if update and event['Timestamp'] <= last_event_timestamp:
                 continue
@@ -172,14 +182,14 @@ def mkenv(envdir, update):
             else:
                 if not event['ResourceStatus'].endswith('IN_PROGRESS'):
                     logging.info('Provisioning event: %s %s',
-                                 event['LogicalResourceId'] if event['ResourceType'] != 'AWS::CloudFormation::Stack' else 'CloudLab {}'.format(envname),
+                                 event['LogicalResourceId'] if event['ResourceType'] != 'AWS::CloudFormation::Stack' else f'CloudLab {envname}',
                                  event['ResourceStatus'])
 
                 previously_seen[event['EventId']] = event
                 if event['ResourceType'] == 'AWS::CloudFormation::Stack' and event['ResourceStatus'].find('COMPLETE') >= 0:
                     done = True
 
-    result = runaws('aws cloudformation describe-stacks --stack-name={}'.format(envname))
+    result = runaws(f'aws cloudformation describe-stacks --stack-name={envname}')
     status = result['Stacks'][0]['StackStatus']
 
     if update:
@@ -194,54 +204,44 @@ def mkenv(envdir, update):
         else:
             logging.info('Cloud formation stack created.')
 
-    # we need a map of role to list of public ip addresses but we don't have it yet
-    # make role_to_server_num:  a map of role to list of server_num
-    # make server_num_to_public_ip: a map of server number to public ip address
-    # then use the combination of the two to make the desired map
-    role_to_server_num = collections.defaultdict(list)
-    server_num_to_public_ip = dict()
-    role_to_public_ip = collections.defaultdict(list)
+    # build the inventory
+    inventory = {'ansible_ssh_private_key_file': keyfile_name }
+    for subnet in config['subnets']:
+        for group in subnet['servers']:
+            role = group['role']
+            for ip_suffix in group['private_ip_suffixes']:
+                server_lookup_key = f"Instance{subnet['az'].upper()}{ip_suffix}Attributes"
+                attributes = get_cf_output(result, server_lookup_key).split('|')
+                public_ip = attributes[0]
+                private_ip = attributes[1]
+                # dns_name = attributes[2]
 
-    # build role_to_server_num
-    for server_type in config['servers']:
-        for server_num in server_type['private_ip_addresses']:
-            for role in server_type['roles']:
-                role_to_server_num[role].append(server_num)
+                inv_role = inventory.setdefault(role, {'hosts': {}})
+                inv_role['hosts'][public_ip] = {
+                    'private_ip': private_ip,
+                    'ansible_user': config['roles'][role]['ssh_user']
+                }
 
-    # use the outputs section of the describe-stacks result to write an Ansible inventory file.
-    invfile = os.path.join(envdir, 'inventory.ini'.format(envname))
+    invfile = os.path.join(envdir, 'inventory.yaml')
     with open(invfile, 'w') as f:
-        for server_type in config['servers']:
-            for server_num in server_type['private_ip_addresses']:
-                public_ip = ''
-                private_ip = ''
-                dns_name = ''
-                for output in result['Stacks'][0]['Outputs']:
-                    if output['OutputKey'] == 'Instance{}Attributes'.format(server_num):
-                        attributes = output['OutputValue'].split('|')
-                        public_ip = attributes[0]
-                        private_ip = attributes[1]
-                        dns_name = attributes[2]
-
-                    if len(public_ip) > 0 and len(private_ip) > 0 and len(dns_name) > 0:
-                        break
-
-                server_num_to_public_ip[server_num] = public_ip
-                f.write('{}  private_ip={} dns_name={}\n'.format(public_ip, private_ip, dns_name))
-
-        # now, before closing the file, create the role_to_public_ip map and write out a section for each role
-        for role, server_nums in role_to_server_num.items():
-            for server_num in server_nums:
-                role_to_public_ip[role].append(server_num_to_public_ip[server_num])
-
-        for role in role_to_public_ip:
-            f.write('\n')
-            f.write('[{}]\n'.format(role))
-            for public_ip in role_to_public_ip[role]:
-                f.write('{}\n'.format(public_ip))
+        yaml.dump(inventory, f)
 
     logging.info('Wrote inventory to {}'.format(invfile))
 
+# returns public_ip, private_ip
+def get_cf_output(cf_cmd_result, key):
+    result = None
+    for output in cf_cmd_result['Stacks'][0]['Outputs']:
+        if output['OutputKey'] == key:
+            result = output['OutputValue']
+            break
+
+    return result
+
+def get_ami_id(ami_name):
+    cmd = f'aws ec2 describe-images --query Images[*].[ImageId] --filters Name=name,Values={ami_name}'
+    result = runaws(cmd)
+    return result[0][0]
 
 # automatically appends --region= --output=json
 def runaws(commands):
@@ -265,3 +265,17 @@ def runaws_result(commands):
     cmdarray += ['--region={}'.format(config['region']), '--output=json']
 
     return subprocess.run(cmdarray, check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+# Parses cidr, extracts the first 3 octets, and appends suffix to then yielding a 4 octet IP
+def make_ip(cidr, suffix):
+    cidr_re = r'(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}/\d{2}'
+    suffix_re = r'\d{1,3}'
+    match = re.fullmatch(cidr_re, cidr)
+    if match is None:
+        raise SyntaxError(f'cidr "{cidr}" does not have the expected format.')
+
+    suffix = str(suffix)
+    if re.fullmatch(suffix_re, suffix) is None:
+        raise SyntaxError(f'suffix "{suffix}" does not have the expected format.')
+
+    return f'{match.group(1)}.{suffix}'

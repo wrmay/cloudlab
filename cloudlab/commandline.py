@@ -1,3 +1,5 @@
+import argparse
+import importlib.resources
 import json
 import logging
 import os
@@ -10,57 +12,52 @@ import sys
 import time
 
 import jinja2
-import pkg_resources
 import yaml
 
 CLOUDFORMATION_TEMPLATE_NAME = 'cf.yaml'
-COMMANDS = ['mkenv', 'rmenv', 'update', 'help']
+CONFIG_FILE_NAME = 'cloudlab_config.yaml'
 config = None  # config is global
 
 
-def print_help():
-    print('Make a new environment:               cloudlab mkenv path/envname')
-    print('Update an existing environment:       cloudlab update path/envname')
-    print('Destroy an existing environment:      cloudlab rmenv path/envname ')
-    print()
-    print('A file named "cloudlab_config.yaml" must be present in the current directory.')
-    print('See the sample below.')
-    print()
-
-    sample = pkg_resources.resource_string('cloudlab', 'cloudlab_config.yaml')
-    print(sample.decode('unicode_escape'))
+def print_sample():
+    sample = importlib.resources.files('cloudlab').joinpath('resources/cloudlab_config.yaml').read_text()
+    print(sample)
 
 
 def run():
     global config
 
-    if len(sys.argv) < 3:
-        print_help()
-        sys.exit(1)
+    parser = argparse.ArgumentParser(prog='cloudlab', description='Declarative lab environment builder for AWS')
+    parser.add_argument("command", choices=['mkenv', 'rmenv', 'update', 'sample'])
+    parser.add_argument("environment", nargs="?", default="cloudlab", help='A unique name for the environment')
+    parser.add_argument("--plan", default='aws_with_subnets', help='The name of the template to use when creating this environment')
+    parser.add_argument("--no-provision", dest='provision', action='store_false', help='Generate the CloudFormation template but do not provision the environment')
 
-    command = sys.argv[1]
-    if command not in COMMANDS:
-        sys.exit('Unrecognized command: {0}'.format(command))
+    args = parser.parse_args()
 
-    if not os.path.isfile('cloudlab_config.yaml'):
-        sys.exit('Exiting because the configuration file is not present. Run "cloudlab help" for details.')
+    if args.command == 'sample':
+        print_sample()
+        sys.exit(0)
 
-    with open('cloudlab_config.yaml', 'r') as config_file:
+    if not os.path.isfile(CONFIG_FILE_NAME):
+        sys.exit(f'Exiting because the configuration file is not present. For a starter configuration file, run  "cloudlab sample > {CONFIG_FILE_NAME}"')
+
+    with open(CONFIG_FILE_NAME, 'r') as config_file:
         config = yaml.safe_load(config_file)
 
-    envdir = sys.argv[2]
+    envdir = args.environment
+    command = args.command
+    template = f'{args.plan}.yaml.j2'
+    provision = args.provision
 
     logging.basicConfig(format='%(asctime)s:%(message)s', level=logging.DEBUG)
 
-    if command == COMMANDS[0]:
-        mkenv(envdir, False)
-    elif command == COMMANDS[1]:
+    if command == 'mkenv':
+        mkenv(envdir, False, template, provision)
+    elif command == 'rmenv':
         rmenv(envdir)
-    elif command == COMMANDS[2]:
-        mkenv(envdir, True)
-    else:
-        print_help()
-        sys.exit(0)
+    elif command == 'update':
+        mkenv(envdir, True, template, provision)
 
 
 def rmenv(envdir):
@@ -79,8 +76,16 @@ def rmenv(envdir):
     logging.info('Removed cloudlab environment: %s.', envdir)
 
 
-def mkenv(envdir, update):
+def mkenv(envdir, update, template, provision):
     global config
+
+    # retrieve the template file
+    j2loader = jinja2.PackageLoader('cloudlab', 'plans')
+    j2env = jinja2.Environment(loader=j2loader, lstrip_blocks=True, trim_blocks=True)
+    try:
+        j2_template = j2env.get_template(template)
+    except jinja2.exceptions.TemplateNotFound:
+        sys.exit(f'cloudlab template not found: {template}')
 
     # augment the configuration by looking up ami_ids for this region
     for role in config['roles'].values():
@@ -119,14 +124,14 @@ def mkenv(envdir, update):
     # generate the yaml file and save it to the target environment
     config['key_pair_name'] = envname
 
-    j2loader = jinja2.PackageLoader('cloudlab', 'plans')
-    j2env = jinja2.Environment(loader=j2loader, lstrip_blocks=True, trim_blocks=True)
-    template = j2env.get_template('aws_with_subnets.yaml.j2')
+    # render the template
     cf_template_file = os.path.join(envdir, CLOUDFORMATION_TEMPLATE_NAME)
     with open(cf_template_file, 'w') as f:
-        template.stream(config=config).dump(f)
+        j2_template.stream(config=config).dump(f)
 
     logging.info(f'Generated Cloud Formation Template: {cf_template_file}')
+    if not provision:
+        return
 
     # create the key pair
     keyfile_name = os.path.join(envdir, envname + '.pem')

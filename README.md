@@ -3,21 +3,15 @@
 Cloudlab allows you to quickly provision a lab environment on AWS.  It attempts to strike a good balance between
 configurability and ease of use.
 
-Cloudlab provisions a single /24 subnet in its own VPC on AWS and supports deploying up to 60 hosts into that subnet.
+Cloudlab provisions a single VPC on AWS with a /16 address space.  Within the VPC, 1 or more subnets can be configured.  
+All subnets are public and all have their own /24 address space inside the VPC.  
 
 Notes:
-- Only EBS instance types are supported
 - All instances (hosts) will have an Amazon assigned public IP address and DNS name.
-- Private ip addresses must be in the range 10.0.0.101 - 10.0.0.254  
-- All hosts will run Amazon Linux 2, which is a yum based distribution derived from Ubuntu.
 - All hosts can initiate connections to any server either in or outside of the private network
 - All hosts accept inbound connections on port 22
 - Other than port 22, hosts will only accept inbound connections on specific ports which can be configured per host
 - Each environment provisioned with cloudlab will have its own ssh key which will be shared by all the hosts.
-
-
-Hosts can be accessed via ssh using the provided key and "ec2-user"
-(e.g.  `ssh -i my-lab-key.pem ec2-user@123.45.67.89`).
 
 
 After provisioning is complete, Cloudlab will write an Ansible inventory file which can be used for further provisioning.
@@ -31,14 +25,13 @@ Cloudlab requires python 3.  It can be installed using pip.
 pip install cloudlab
 ```
 
-Installing cloudlab will install the aws cli if it is not already there.
+Cloudlab requires the aws cli to be present.  See https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html 
+for installation instructions.
 
-Next you will need to configure the aws cli with your AWS access key and
-secret access key so that it can access your account.  Cloudlab uses the
-the aws cli and will have whatever privileges your cli has.  You can either
-configure it with your root credentials or create a new IAM user and provide
-those credentials.  If you create a new IAM user, it will need the following
-permissions.
+Next you will need to configure the aws cli with your AWS access key and  secret access key so that it can access your 
+account.  Cloudlab uses the the aws cli and will have whatever privileges your cli has.  You can either configure it 
+with your root credentials or create a new IAM user and provide  those credentials.  If you create a new IAM user, it 
+will need the following permissions.
 
 ```json
 {
@@ -57,9 +50,8 @@ permissions.
 }
 ```
 
-If your aws cli is not already configured, provide your credentials using the
-command below.  They will be stored under the ".aws" folder in your home
-directory.  Note that you will be prompted to provide a region but this is
+If your aws cli is not already configured, provide your credentials using the command below.  They will be stored 
+under the ".aws" folder in your home directory.  Note that you will be prompted to provide a region but this is
 only a default.  You can use cloudlab to deploy into any region.
 
 ```
@@ -71,34 +63,32 @@ Create a file called "cloudlab_config.yaml" in the current directory and edit it
 would like to provision.  An example is given below.
 
 ```yaml
-
----
-  region: us-east-1
-  servers:
-    - instance_type: m5.xlarge
-      private_ip_addresses: [101,102,103] # 3 servers like this - private IPs will be 10.0.0.101,102,103
-      roles:
-        - ClusterMember
-    - instance_type: m5.xlarge
-      private_ip_addresses: [111]         # 1 server like this - private IP will be 10.0.0.111
-      roles:
-        - ManCenter                       # Servers may have one or more roles
-        - RawTransactionSource            # Roles must be alphanumeric - no underscores or hyphens
-        - ReportRunner
-    - instance_type: m5.xlarge
-      private_ip_addresses: [112]  
-      roles:
-        - TransactionClient
-  open_ports:                             # Open ports are specified by role
-    ClusterMember:
-      - 5701
-      - 5702
-      - 5703
-    ManCenter:
-      - 8080
-    RawTransactionSource: []              # configure no open ports like this
-    ReportRunner: []                      # all servers will still listen on port 22 for SSH connections
-    TransactionClient: []
+region: us-east-2
+cidr: 10.0.0.0/16  # must be a /16 subnet, must be a non-routable IP (e.g. 10.*.*.*, 192.168.*.*)
+roles:
+  ClusterMember:   # role names are copied directly into the CloudFormation template and should not contain special characters
+    instance_type: m5.xlarge
+    ami_name: ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20240927
+    ssh_user: ubuntu
+    open_ports: [5701, 5702]
+  LoadGenerator:
+    instance_type: m5.xlarge
+    ami_name: al2023-ami-2023.6.20241111.0-kernel-6.1-x86_64  # will look up the correct one for this region
+    ssh_user: ec2-user
+    open_ports: [8080]
+subnets:
+  - az: a                  # will be appended to region, e.g. us-east-2a
+    cidr: 10.0.1.0/24      # must be a /24
+    servers:
+      - private_ip_suffixes: [101, 102]   # only need to give the last octet, becomes 10.0.1.101
+        role: ClusterMember
+  - az: b
+    cidr: 10.0.2.0/24
+    servers:
+      - private_ip_suffixes: [101, 102]   # creates 2 servers, 10.0.2.101 and 10.0.2.102
+        role: ClusterMember
+      - private_ip_suffixes: [201]
+        role: LoadGenerator
 ```
 
 Create an environment ...
@@ -113,7 +103,7 @@ and must be unique.
 The "envdir" directory will be created.  The process will fail if the directory already exists.
 
 An Ansible inventory file containing both the public and private ip addresses will be written into
-"envdir" to faciliate managing the environment with  Ansible playbooks
+"envdir" to facilitate managing the environment with  Ansible playbooks
 
 ```
 cloudlab rmenv envdir
@@ -129,6 +119,10 @@ cloudlab update envdir
 Will cause the environment to be updated based on changes to "cloudlab_config.yaml"
 
 # Release Notes
+
+## v1.2.0 is a major update
+- default plan now includes multiple subnets
+- configuration formation has changed
 
 ## v1.1.9
 

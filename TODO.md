@@ -1,7 +1,0 @@
-- put comments in template
-- allow "plan" to be selected
-- rework to use argparse
-- add a "example" command
-- add a template only function 
-- don't bother with parameterizing the subnets, just go with a 10.
-- 

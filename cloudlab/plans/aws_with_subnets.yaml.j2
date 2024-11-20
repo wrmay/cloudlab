@@ -62,6 +62,13 @@
         ToPort: 22
         CidrIp: 0.0.0.0/0
 
+    VPCIngressRule:
+      Type: AWS::EC2::SecurityGroupIngress
+      Properties:
+        GroupId: !Ref BaseSecurityGroup
+        IpProtocol: -1
+        CidrIp: {{ config.cidr }}
+
     AllEgressRule:
       Type: AWS::EC2::SecurityGroupEgress
       Properties:
@@ -69,18 +76,18 @@
         IpProtocol: -1
         CidrIp: 0.0.0.0/0
 
-{% for role in config.roles %}
-    {{ role }}SecurityGroup:
+{% for role_name, role in config.roles.items() %}
+    {{ role_name }}SecurityGroup:
       Type: AWS::EC2::SecurityGroup
       Properties:
-        GroupDescription: {{ role }}
+        GroupDescription: Ingress rules for {{ role_name }}
         VpcId: !Ref VPC
 
     {% for port in role.open_ports %}
-    {{ role }}Port{{ port }}IngressRule:
+    {{ role_name }}Port{{ port }}IngressRule:
       Type: AWS::EC2::SecurityGroupIngress
       Properties:
-        GroupId: !Ref {{ role }}SecurityGroup
+        GroupId: !Ref {{ role_name }}SecurityGroup
         IpProtocol: tcp
         FromPort: {{ port }}
         ToPort: {{ port }}

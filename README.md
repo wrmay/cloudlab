@@ -135,6 +135,7 @@ cloudlab update <envdir>
 - configuration format has changed to allow the specification of subnets 
 - the `--plan` option allows alternate templates to be used although there currently are none.
 - the `cloudlab sample` will output a sample configuration file
+- removed dependency on methods in setuptools
 
 ## v1.1.9
 

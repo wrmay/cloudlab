@@ -1,67 +1,17 @@
 # Cloudlab Overview
 
-Cloudlab allows you to quickly provision a lab environment on AWS.  It attempts to strike a good balance between
-configurability and ease of use.
+Cloudlab allows you to quickly provision a lab environment on AWS.  By adopting a somewhat opinionated approach, 
+It attempts to strike a good balance between configurability and ease of use.
 
-Cloudlab provisions a single VPC on AWS with a /16 address space.  Within the VPC, 1 or more subnets can be configured.  
-All subnets are public and all have their own /24 address space inside the VPC.  
+Cloudlab provisions a single VPC on AWS with a /16 private address space.  Within the VPC, 1 or more subnets can be 
+configured.  All subnets are public and all have their own /24 address space inside the VPC.  All machines are assigned 
+a role.  The machine type, image and a list of open ports are configured at the role level to avoid redundant 
+configuration.
 
-Notes:
-- All instances (hosts) will have an Amazon assigned public IP address and DNS name.
-- All hosts can initiate connections to any server either in or outside of the private network
-- All hosts accept inbound connections on port 22
-- Other than port 22, hosts will only accept inbound connections on specific ports which can be configured per host
-- Each environment provisioned with cloudlab will have its own ssh key which will be shared by all the hosts.
+After successful deployment, cloudlab writes an `inventory.yaml` file,  which list the public and private ips of all 
+servers, grouped by role.  The inventory file is suitable for use with Ansible.
 
-
-After provisioning is complete, Cloudlab will write an Ansible inventory file which can be used for further provisioning.
-Cloudlab supports the idea of roles, which will be propagated to the Ansible inventory file.
-
-# Setup
-
-Cloudlab requires python 3.  It can be installed using pip.
-
-```
-pip install cloudlab
-```
-
-Cloudlab requires the aws cli to be present.  See https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html 
-for installation instructions.
-
-Next you will need to configure the aws cli with your AWS access key and  secret access key so that it can access your 
-account.  Cloudlab uses the the aws cli and will have whatever privileges your cli has.  You can either configure it 
-with your root credentials or create a new IAM user and provide  those credentials.  If you create a new IAM user, it 
-will need the following permissions.
-
-```json
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Action": [
-                "ec2:*",
-                "cloudformation:*",
-                "elasticloudbalancing:*"
-            ],
-            "Effect": "Allow",
-            "Resource": "*"
-        }
-    ]
-}
-```
-
-If your aws cli is not already configured, provide your credentials using the command below.  They will be stored 
-under the ".aws" folder in your home directory.  Note that you will be prompted to provide a region but this is
-only a default.  You can use cloudlab to deploy into any region.
-
-```
-aws configure  # follow the prompts ...
-```
-# Usage
-
-Create a file called "cloudlab_config.yaml" in the current directory and edit it to describe the environment(s) you
-would like to provision.  An example is given below.
-
+A sample configuration for deploying 5 servers to 2 subnets is shown below.
 ```yaml
 region: us-east-2
 cidr: 10.0.0.0/16  # must be a /16 subnet, must be a non-routable IP (e.g. 10.*.*.*, 192.168.*.*)
@@ -91,38 +41,100 @@ subnets:
         role: LoadGenerator
 ```
 
-Create an environment ...
+Other Notes:
+- All instances (hosts) will have an Amazon assigned public IP address and DNS name.
+- All hosts can initiate outbound connections to any other server either in or outside of the VPC
+- All hosts can receive connections on any port, from any other server in the VPC
+- All hosts accept inbound connections on port 22
+- Other than port 22, hosts will only accept inbound connections on specific ports which can be configured per role
+- Each environment provisioned with cloudlab will have its own ssh key which will be shared by all the hosts.
+- AMIs are specified by "name" rather than the typical "ami_id", which is region specific.  At deploy time, the 
+name is translated to a region specific ami_id.  This makes the cloudlab configuration easier to port to another
+region.
+
+# Setup
+
+Cloudlab requires python 3.  
+
+It can be installed using pip.
 
 ```
-cloudlab mkenv envdir
+pip install cloudlab
 ```
 
-"envdir" should be an absolute or relative path.  The `basename(envdir)` will be used as the name of the environment
-and must be unique.
+Cloudlab requires the aws cli to be present.  See https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html 
+for installation instructions.
 
-The "envdir" directory will be created.  The process will fail if the directory already exists.
+The AWS CLI will need to be configured with your credentials so it can access your AWS account.
+If your aws cli is not already configured, provide your credentials using the `aws configure` command or, 
+if sso is configured, `aws sso login`
 
-An Ansible inventory file containing both the public and private ip addresses will be written into
-"envdir" to facilitate managing the environment with  Ansible playbooks
+Cloudlab will have whatever privileges your cli has.  The snippet below is an IAM policy describing the permissions
+needed by cloudlab.
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "ec2:*",
+                "cloudformation:*",
+                "elasticloudbalancing:*"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        }
+    ]
+}
+```
+
+# Usage
+
+## Define your environment
+Create a file called "cloudlab_config.yaml" in the current directory and edit it to describe the environment you
+would like to provision.  See the example above.  You can also create a sample configuration file by running 
+`cloudlab sample > cloudlab_config.yaml`.  See the comments in the sample file for details.
+
+## Create a new environment
 
 ```
-cloudlab rmenv envdir
+cloudlab mkenv <envdir>
 ```
 
-Will destroy a previously created environment.
+"envdir" should be an absolute or relative path.  The name of the directory, without any path,  will be used as the 
+name of the environment and the name must be unique. The "envdir" directory will be created.  The process 
+will fail if the directory exists.
+
+You can generate a CloudFormation template and skip the provisioning step by adding the `--no-provision` flag as 
+shown below.
 
 ```
-cloudlab update envdir
+cloudlab mkenv <envdir> --no-provision 
+```
+## Destroy an environment
 
 ```
+cloudlab rmenv <envdir>
+```
 
-Will cause the environment to be updated based on changes to "cloudlab_config.yaml"
+This command is idempotent.  It will not fail if the environment does not exist.
+
+## Update an environment
+
+Update `cloudlab_config.yaml` with your changes and run ...
+
+```
+cloudlab update <envdir>
+```
 
 # Release Notes
 
 ## v1.2.0 is a major update
 - default plan now includes multiple subnets
-- configuration formation has changed
+- configuration format has changed to allow the specification of subnets 
+- the `--plan` option allows alternate templates to be used although there currently are none.
+- the `cloudlab sample` will output a sample configuration file
 
 ## v1.1.9
 

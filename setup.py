@@ -7,15 +7,15 @@ setuptools.setup(
     name='cloudlab',
     version='1.2.0',
     author='Randy May',
-    description='A tool for quickly provisioning environments on AWS for use with classes and performance labs.',
+    description='A tool for quickly provisioning lab environments on AWS.',
     long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/wrmay/cloudlab',
     packages=setuptools.find_packages(),
-    package_data={ 'cloudlab': ['plans/*']},
+    package_data={ 'cloudlab': ['plans/*','resources/*']},
     entry_points = {
         'console_scripts' : ['cloudlab=cloudlab.commandline:run']
     },
     license='MIT',
-    install_requires=['jinja2>=3.1.4', 'PyYaml>=6.0.2', 'setuptools>=69.2.0']
+    install_requires=['jinja2>=3.1.4', 'PyYaml>=6.0.2']
 )

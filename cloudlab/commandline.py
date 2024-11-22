@@ -52,6 +52,12 @@ def run():
 
     logging.basicConfig(format='%(asctime)s:%(message)s', level=logging.DEBUG)
 
+    # validate that the environment directory, which is also used as an AWS CloudFormation stack name, is valid
+    valid_stack_name_re = r"[a-zA-Z][-a-zA-Z0-9]*"
+    if re.fullmatch(valid_stack_name_re, envdir) is None:
+        sys.exit(f'"{envdir}" is not a valid environment name.  Because it used as an AWS CloudFormation stack name, '
+                 f'it must match the following regular expression: "{valid_stack_name_re}"')
+
     if command == 'mkenv':
         mkenv(envdir, False, template, provision)
     elif command == 'rmenv':

@@ -210,7 +210,14 @@ def mkenv(envdir, update, template, provision):
             logging.info('Cloud formation stack created.')
 
     # build the inventory
-    inventory = {'ansible_ssh_private_key_file': keyfile_name }
+    inventory = {
+        "all": {
+            "vars": {
+                "ansible_ssh_private_key_file": envname + ".pem"
+            }
+        }
+    }
+
     for subnet in config['subnets']:
         for group in subnet['servers']:
             role = group['role']
@@ -221,10 +228,15 @@ def mkenv(envdir, update, template, provision):
                 private_ip = attributes[1]
                 # dns_name = attributes[2]
 
-                inv_role = inventory.setdefault(role, {'hosts': {}})
+                inv_role = inventory.setdefault(role, {
+                    'vars': {
+                        'ansible_user': config['roles'][role]['ssh_user']
+                    },
+                    'hosts': {}
+                })
+
                 inv_role['hosts'][public_ip] = {
-                    'private_ip': private_ip,
-                    'ansible_user': config['roles'][role]['ssh_user']
+                    'private_ip': private_ip
                 }
 
     invfile = os.path.join(envdir, 'inventory.yaml')

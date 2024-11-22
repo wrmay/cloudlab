@@ -130,6 +130,10 @@ cloudlab update <envdir>
 
 # Release Notes
 
+## v1.2.1 - includes an important fix to the inventory file 
+- Fix to correct the format used for variables in the Ansible inventory file
+- Added a validation that the environment name is also a valid CloudFormation stack name
+
 ## v1.2.0 is a major update
 - default plan now includes multiple subnets
 - configuration format has changed to allow the specification of subnets 

@@ -1,0 +1,21 @@
+[project]
+name = "cloudlab"
+version = "1.2.2"
+description = "A tool for provisioning lab environments on AWS"
+authors = [
+    {name = "Randy May",email = "randy@mathysphere.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "jinja2 (>=3.1.4)",
+    "pyyaml (>=6.0.2)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+cloudlab = "cloudlab.commandline:run"

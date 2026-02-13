@@ -103,7 +103,11 @@
       Properties:
         DisableApiTermination: false
         InstanceInitiatedShutdownBehavior: stop
+       {% if config.roles[group.role].ami_id  %}
         ImageId: {{ config.roles[group.role].ami_id }}
+       {% else %}
+        ImageId: '{% raw %}{{resolve:ssm:{% endraw %}{{ config.roles[group.role].ami_name }}{% raw %}}}{% endraw %}'
+       {% endif %}
         InstanceType: {{ config.roles[group.role].instance_type }}
         KeyName: {{ config.key_pair_name }}
         Monitoring: false

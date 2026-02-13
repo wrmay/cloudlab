@@ -1,7 +1,7 @@
 # Cloudlab Overview
 
-Cloudlab allows you to quickly provision a lab environment on AWS.  By adopting a somewhat opinionated approach, 
-It attempts to strike a good balance between configurability and ease of use.
+Cloudlab allows you to quickly provision a lab environment on AWS.  It attempts to strike a good balance between 
+configurability and ease of use by adopting a somewhat opinionated approach.
 
 Cloudlab provisions a single VPC on AWS with a /16 private address space.  Within the VPC, 1 or more subnets can be 
 configured.  All subnets are public and all have their own /24 address space inside the VPC.  All machines are assigned 
@@ -13,17 +13,19 @@ servers, grouped by role.  The inventory file is suitable for use with Ansible.
 
 A sample configuration for deploying 5 servers to 2 subnets is shown below.
 ```yaml
+---
 region: us-east-2
 cidr: 10.0.0.0/16  # must be a /16 subnet, must be a non-routable IP (e.g. 10.*.*.*, 192.168.*.*)
 roles:
   ClusterMember:   # role names are copied directly into the CloudFormation template and should not contain special characters
     instance_type: m5.xlarge
-    ami_name: ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20240927
+    ami_name: /aws/service/canonical/ubuntu/server/xenial/stable/current/amd64/hvm/ebs-gp2/ami-id
     ssh_user: ubuntu
     open_ports: [5701, 5702]
   LoadGenerator:
     instance_type: m5.xlarge
-    ami_name: al2023-ami-2023.6.20241111.0-kernel-6.1-x86_64  # will look up the correct one for this region
+    ami_name: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64  # wont be used when ami_id is present
+    ami_id: ami-05efc83cb5512477c    # note this is region specific
     ssh_user: ec2-user
     open_ports: [8080]
 subnets:
@@ -48,13 +50,14 @@ Other Notes:
 - All hosts accept inbound connections on port 22
 - Other than port 22, hosts will only accept inbound connections on specific ports which can be configured per role
 - Each environment provisioned with cloudlab will have its own ssh key which will be shared by all the hosts.
-- AMIs are specified by "name" rather than the typical "ami_id", which is region specific.  At deploy time, the 
-name is translated to a region specific ami_id.  This makes the cloudlab configuration easier to port to another
-region.
+- AMIs can be specified either with "ami_id", which is the region specific image id, or by "ami_name", which is 
+actually a public ssm parameter which is mapped to the correct id in each environment. For example: 
+"/aws/service/canonical/ubuntu/server/xenial/stable/current/amd64/hvm/ebs-gp2/ami-id".  For help finding the 
+SSM parameter for a certain image, see [this article](https://medium.com/@josiahsicad/list-of-ec2-image-public-ssm-parameters-3338f83d4ec8).
 
 # Setup
 
-Cloudlab requires python 3.  
+Cloudlab requires python 3.10+.  
 
 It can be installed using pip.
 
@@ -129,6 +132,10 @@ cloudlab update <envdir>
 ```
 
 # Release Notes
+
+## v1.2.2
+- Converted to Poetry build system 
+- Use SSM parameters for AMI ids.  
 
 ## v1.2.1 - includes an important fix to the inventory file 
 - Fix to correct the format used for variables in the Ansible inventory file

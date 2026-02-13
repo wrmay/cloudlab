@@ -93,11 +93,6 @@ def mkenv(envdir, update, template, provision):
     except jinja2.exceptions.TemplateNotFound:
         sys.exit(f'cloudlab template not found: {template}')
 
-    # augment the configuration by looking up ami_ids for this region
-    for role in config['roles'].values():
-        if 'ami_name' in role:
-            role['ami_id'] = get_ami_id(role['ami_name'])
-
     # convert private_ip_suffixes to private_ip_addresses for each server
     for subnet in config['subnets']:
         for group in subnet['servers']:
@@ -260,11 +255,6 @@ def get_cf_output(cf_cmd_result, key):
             break
 
     return result
-
-def get_ami_id(ami_name):
-    cmd = f'aws ec2 describe-images --query Images[*].[ImageId] --filters Name=name,Values={ami_name}'
-    result = runaws(cmd)
-    return result[0][0]
 
 # automatically appends --region= --output=json
 def runaws(commands):

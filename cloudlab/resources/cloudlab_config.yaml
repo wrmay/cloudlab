@@ -1,34 +1,33 @@
+# This example create a vpc with 2 subnets, one in us-east-2a and one in us-east-2b.  There are
+# 2 types of machines, which are listed under "roles": a ClusterMember and a LoadGenerator.  Roles can have
+# any name you choose so long as they do not contain spaces or special characters.  The  instance type, ami and
+# other details are specified under the role.
+#
+# AMIs can be specified with either ami_id or ami_name.  The ami_id is the Amazon image id, which is *region specific*.
+# A region agnostic approach is supported via ssm parameters.  If ami_id is not provided, then the ami_name will be
+# used to look up the image id for the region you are in.
+#
+# See https://medium.com/@josiahsicad/list-of-ec2-image-public-ssm-parameters-3338f83d4ec8 for an explanation of
+# how to look up SSM parameters for various operating systems. This sample illustrates both approaches.
+#
+# Number of instances of each type, and placement within subnets is specified under "subnets". In the example
+# below, 2 instances of the ClusterMember type will be placed in us-east-2a and will have IP addresses
+# 10.0.1.101 and 10.0.1.102.  The us-east-2b region will contain 2 more ClusterMember instances at
+# 10.0.2.101 and 10.0.2.102, and a LoadGenerator instance at 10.0.2.201
+#
 ---
-#
-# Region independent names of some popular amis are below (as of Nov 2024)
-#
-# Amazon Linux 2023 (default ssh user: ec2-user)
-# al2023-ami-2023.6.20241111.0-kernel-6.1-x86_64
-# al2023-ami-2023.6.20241111.0-kernel-6.1-arm64
-#
-# Amazon Linux 2 (default ssh user: ec2-user)
-# amzn2-ami-kernel-5.10-hvm-2.0.20241113.1-x86_64-gp2
-# amzn2-ami-kernel-5.10-hvm-2.0.20241113.1-arm64-gp2
-#
-# Ubuntu Server 24.04 LTS (default ssh user: ubuntu)
-# ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20240927
-# ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-arm64-server-20240927
-#
-# Ubuntu Server 22.04 LTS (default ssh user: ubuntu)
-# ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-20240927
-# ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-arm64-server-20240927
-#
 region: us-east-2
 cidr: 10.0.0.0/16  # must be a /16 subnet, must be a non-routable IP (e.g. 10.*.*.*, 192.168.*.*)
 roles:
   ClusterMember:   # role names are copied directly into the CloudFormation template and should not contain special characters
     instance_type: m5.xlarge
-    ami_name: ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20240927
+    ami_name: /aws/service/canonical/ubuntu/server/xenial/stable/current/amd64/hvm/ebs-gp2/ami-id
     ssh_user: ubuntu
     open_ports: [5701, 5702]
   LoadGenerator:
     instance_type: m5.xlarge
-    ami_name: al2023-ami-2023.6.20241111.0-kernel-6.1-x86_64  # will look up the correct one for this region
+    ami_name: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64  # wont be used when ami_id is present
+    ami_id: ami-05efc83cb5512477c    # note this is region specific
     ssh_user: ec2-user
     open_ports: [8080]
 subnets:
